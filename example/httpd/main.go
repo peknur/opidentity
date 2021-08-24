@@ -69,6 +69,7 @@ func RunHTTPServer(addr string) error {
 	http.HandleFunc("/jwks", JWKSHandler)
 	return http.ListenAndServe(addr, nil)
 }
+
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	if err := renderTemplate(w, "templates/index.html", nil); err != nil {
 		errorHandler(w, r, http.StatusInternalServerError, err)
