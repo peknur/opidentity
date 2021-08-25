@@ -2,7 +2,6 @@ package main
 
 import (
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -85,22 +84,7 @@ func identifyHandler(c *opidentity.Client) func(http.ResponseWriter, *http.Reque
 		// state between request and callback (eg session id)
 		state := opidentity.CreateRandomToken(32)
 
-		payload, err := json.Marshal(opidentity.Auth{
-			ClientID:     ClientID,
-			Scope:        Scope,
-			RedirectURL:  c.CallbackURL,
-			ResponseType: "code",
-			Nonce:        nonce,
-			State:        state,
-			Locales:      c.Locales,
-			Prompt:       "consent",
-		})
-		if err != nil {
-			errorHandler(w, r, http.StatusInternalServerError, err)
-			return
-		}
-
-		token, err := opidentity.NewSignature(payload, c.SigningKey)
+		token, err := c.NewAuthToken(Scope, state, nonce, true)
 		if err != nil {
 			errorHandler(w, r, http.StatusInternalServerError, err)
 			return

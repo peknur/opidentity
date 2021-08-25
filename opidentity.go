@@ -16,6 +16,8 @@ import (
 )
 
 const ClientAssertionClaimExpiration = 600
+const responseTypeCode = "code"
+const promptTypeConcent = "consent"
 
 // Auth attributes for /oauth/authorize
 // https://github.com/op-developer/Identity-Service-Broker-API#7-getpost-oauthauthorize
@@ -87,6 +89,27 @@ type Client struct {
 	Locales                  string
 	AssertionClaimExpiration int64
 	KeyStore                 PublicKeyProvider
+}
+
+func (c *Client) NewAuthToken(scope string, state string, nonce string, promptConcent bool) (string, error) {
+	var prompt string
+	if promptConcent {
+		prompt = promptTypeConcent
+	}
+	payload, err := json.Marshal(Auth{
+		ClientID:     c.ID,
+		Scope:        scope,
+		RedirectURL:  c.CallbackURL,
+		ResponseType: responseTypeCode,
+		Nonce:        nonce,
+		State:        state,
+		Locales:      c.Locales,
+		Prompt:       prompt,
+	})
+	if err != nil {
+		return "", err
+	}
+	return NewSignature(payload, c.SigningKey)
 }
 
 func (c *Client) NewIdentityFromAuthorizationCode(authorizationCode string) (Identity, error) {
