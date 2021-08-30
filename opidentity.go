@@ -169,6 +169,28 @@ func (c *Client) EncodeClientAssertionToken(tokenID string) (string, error) {
 	return NewSignature(clientAssertion, c.SigningKey)
 }
 
+func NewClient(clientID string, authURL string, tokenURL string, callbackURL string, locales string, encryptionKeyPath string, signingKeyPath string, keyStore PublicKeyProvider) (*Client, error) {
+	encryptionKey, err := NewPrivateKeyFromFile(encryptionKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	signingKey, err := NewPrivateKeyFromFile(signingKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		ID:                       clientID,
+		EncryptionKey:            encryptionKey,
+		SigningKey:               signingKey,
+		AuthURL:                  authURL,
+		TokenURL:                 tokenURL,
+		CallbackURL:              callbackURL,
+		Locales:                  locales,
+		AssertionClaimExpiration: ClientAssertionClaimExpiration,
+		KeyStore:                 keyStore,
+	}, nil
+}
+
 func DecodeIdentityToken(token string, encryptionKey *rsa.PrivateKey, k PublicKeyProvider) (Identity, error) {
 	id := Identity{}
 
