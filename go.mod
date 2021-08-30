@@ -1,4 +1,4 @@
-module opidentity
+module github.com/peknur/opidentity
 
 go 1.16
 
