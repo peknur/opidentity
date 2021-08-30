@@ -7,10 +7,11 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"opidentity"
-	"opidentity/jwk"
 	"text/template"
 	"time"
+
+	"github.com/peknur/opidentity"
+	"github.com/peknur/opidentity/jwk"
 )
 
 //go:embed static/*
@@ -19,52 +20,41 @@ var staticDir embed.FS
 //go:embed templates/*
 var templateDir embed.FS
 
-// Test credentials
-var ClientID = "saippuakauppias"
-var Scope = "openid personal_identity_code profile"
-var AuthURL = "https://isb-test.op.fi/oauth/authorize"
-var TokenURL = "https://isb-test.op.fi/oauth/token"
-var CallbackURL = "http://localhost:8000/callback"
-var ISBKeyEndpoint = "https://isb-test.op.fi/jwks/broker"
-var Locales = "fi"
-
 func main() {
+	// http server listen address
 	addr := ":8000"
+
+	// OP test credentials
+	clientID := "saippuakauppias"
+	authURL := "https://isb-test.op.fi/oauth/authorize"
+	tokenURL := "https://isb-test.op.fi/oauth/token"
+	callbackURL := "http://localhost:8000/callback"
+	isbKeyEndpoint := "https://isb-test.op.fi/jwks/broker"
+	locales := "fi"
+
+	var client *opidentity.Client
+	var err error
+
+	keyStore := jwk.NewKeyStore(isbKeyEndpoint, 5*time.Minute)
+	if err = keyStore.Refresh(); err != nil {
+		log.Fatal(err)
+	}
+
+	if client, err = opidentity.NewClient(clientID, authURL, tokenURL, callbackURL, locales, "sandbox-sp-encryption-key.pem", "sandbox-sp-signing-key.pem", keyStore); err != nil {
+		log.Fatal(err)
+	}
 	log.Printf("start listening %s", addr)
-	if err := RunHTTPServer(addr); err != nil {
+	if err := RunHTTPServer(addr, client); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func RunHTTPServer(addr string) error {
-	encryptionKey, err := opidentity.NewPrivateKeyFromFile("sandbox-sp-encryption-key.pem")
-	if err != nil {
-		return err
-	}
-	signingKey, err := opidentity.NewPrivateKeyFromFile("sandbox-sp-signing-key.pem")
-	if err != nil {
-		return err
-	}
-	k := jwk.NewKeyStore(ISBKeyEndpoint, 5*time.Minute)
-	if err := k.Refresh(); err != nil {
-		return err
-	}
-	config := opidentity.Client{
-		ID:                       ClientID,
-		EncryptionKey:            encryptionKey,
-		SigningKey:               signingKey,
-		AuthURL:                  AuthURL,
-		TokenURL:                 TokenURL,
-		CallbackURL:              CallbackURL,
-		Locales:                  Locales,
-		AssertionClaimExpiration: opidentity.ClientAssertionClaimExpiration,
-		KeyStore:                 k,
-	}
+func RunHTTPServer(addr string, client *opidentity.Client) error {
 	fileServer := http.FileServer(http.FS(staticDir))
 	http.Handle("/static/", fileServer)
 	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/identify", identifyHandler(&config))
-	http.HandleFunc("/callback", callbackHandler(&config))
+	http.HandleFunc("/identify", identifyHandler(client))
+	http.HandleFunc("/callback", callbackHandler(client))
 	http.HandleFunc("/jwks", JWKSHandler)
 	return http.ListenAndServe(addr, nil)
 }
@@ -79,17 +69,21 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 func identifyHandler(c *opidentity.Client) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
+		// set scope of requested information
+		scope := "openid personal_identity_code profile"
+
 		// make sure that the nonce attribute in the ID Token matches (mitigate replay attacks)
 		nonce := opidentity.CreateRandomToken(32)
+
 		// state between request and callback (eg session id)
 		state := opidentity.CreateRandomToken(32)
 
-		token, err := c.NewAuthToken(Scope, state, nonce, true)
+		token, err := c.NewAuthToken(scope, state, nonce, true)
 		if err != nil {
 			errorHandler(w, r, http.StatusInternalServerError, err)
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("%s?request=%s", AuthURL, token), http.StatusTemporaryRedirect)
+		http.Redirect(w, r, fmt.Sprintf("%s?request=%s", c.AuthURL, token), http.StatusTemporaryRedirect)
 	}
 }
 
